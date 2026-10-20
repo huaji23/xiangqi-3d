@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>象棋残局 3D</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;
+  background:radial-gradient(ellipse at 50% 20%,#2e2116 0%,#140d06 55%,#070402 100%);
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#e8dcc8}
+#app{position:fixed;top:0;left:0;right:0;bottom:160px}
+canvas{display:block;width:100%;height:100%}
+
+.hd{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;
+    justify-content:space-between;padding:12px 16px;z-index:10;
+    background:linear-gradient(180deg,rgba(7,4,2,.9) 0%,rgba(7,4,2,0) 100%);
+    pointer-events:none}
+.hd h1{font-size:15px;font-weight:600;letter-spacing:4px;color:#d4a960;
+       text-shadow:0 2px 10px rgba(0,0,0,.9)}
+.lv{font-size:11px;color:#8a7a60;letter-spacing:1px}
+.lv b{color:#d4a960;font-size:13px}
+
+.hud{position:fixed;top:52px;left:12px;display:flex;gap:6px;z-index:10;pointer-events:none}
+.chip{background:rgba(255,255,255,.06);border:1px solid rgba(212,169,96,.22);
+      border-radius:8px;padding:5px 10px;text-align:center;backdrop-filter:blur(8px)}
+.chip .k{font-size:8px;color:#7a6a50;letter-spacing:1px}
+.chip .v{font-size:14px;font-weight:700;color:#d4a960;font-variant-numeric:tabular-nums}
+.chip.warn{border-color:rgba(220,90,60,.55);background:rgba(200,70,50,.14)}
+.chip.warn .v{color:#e05a3a}
+
+.msg{position:fixed;left:50%;transform:translateX(-50%);bottom:118px;
+     max-width:min(92vw,400px);padding:8px 16px;border-radius:20px;
+     font-size:12px;line-height:1.4;text-align:center;z-index:10;
+     background:rgba(10,7,3,.82);border:1px solid rgba(212,169,96,.2);
+     color:#a89880;backdrop-filter:blur(10px);transition:all .25s;
+     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg.ok{background:rgba(30,80,35,.85);border-color:rgba(90,200,90,.5);color:#8fd48f}
+.msg.bad{background:rgba(80,25,15,.85);border-color:rgba(220,90,60,.5);color:#e09080}
+.msg.hint{background:rgba(80,65,15,.85);border-color:rgba(220,190,80,.5);color:#e0c060}
+
+.bar{position:fixed;left:50%;transform:translateX(-50%);bottom:52px;
+     display:flex;gap:9px;z-index:10}
+.bar button{border:none;border-radius:22px;padding:11px 20px;font-size:13px;
+            font-weight:600;letter-spacing:1px;cursor:pointer;font-family:inherit;
+            transition:transform .12s,opacity .12s;backdrop-filter:blur(10px);
+            white-space:nowrap;flex:0 0 auto}
+@media (max-width:430px){
+  .bar{gap:7px}
+  .bar button{padding:10px 15px;font-size:12.5px;letter-spacing:0}
+}
+.bar button:active{transform:scale(.94);opacity:.85}
+#hintBtn{background:rgba(212,169,96,.2);color:#d4a960;border:1px solid rgba(212,169,96,.42)!important}
+#undoBtn,#resetBtn{background:rgba(255,255,255,.08);color:#b8a890;border:1px solid rgba(255,255,255,.13)!important}
+#nextBtn{background:linear-gradient(135deg,#d4a960,#b8893c);color:#2a1a08;display:none}
+#nextBtn.show{display:block;animation:pop .35s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+
+#loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+         flex-direction:column;gap:14px;background:#0a0603;z-index:100;transition:opacity .4s}
+#loading.gone{opacity:0;pointer-events:none}
+#loading .sp{width:34px;height:34px;border:3px solid rgba(212,169,96,.2);
+             border-top-color:#d4a960;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading .tx{font-size:12px;color:#7a6a50;letter-spacing:2px}
+
+#win{position:fixed;inset:0;background:rgba(6,4,1,.94);display:none;
+     flex-direction:column;align-items:center;justify-content:center;z-index:99}
+#win.show{display:flex;animation:fade .3s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+#win .big{font-size:56px;margin-bottom:10px;animation:pop2 .55s cubic-bezier(.2,1.7,.4,1)}
+@keyframes pop2{from{transform:scale(0) rotate(-25deg)}to{transform:scale(1) rotate(0)}}
+#win .t{font-size:21px;font-weight:700;color:#d4a960;letter-spacing:4px;margin-bottom:7px}
+#win .s{font-size:12px;color:#8a7a60;margin-bottom:24px;letter-spacing:1px}
+#win button{flex:0 0 auto;width:190px;padding:13px;border:none;border-radius:10px;
+            background:linear-gradient(135deg,#d4a960,#b8893c);color:#2a1a08;
+            font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+
+.tip{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+     font-size:10px;color:#4a4038;letter-spacing:1px;z-index:9;white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hd">
+  <h1>象 棋 残 局 3D</h1>
+  <div class="lv">第 <b id="lvNum">1</b> / <span id="lvAll">8</span> 关</div>
+</div>
+
+<div class="hud">
+  <div class="chip" id="c1"><div class="k">已走</div><div class="v" id="moveCnt">0</div></div>
+  <div class="chip"><div class="k">限步</div><div class="v" id="moveLimit">2</div></div>
+  <div class="chip" id="c3"><div class="k">剩步</div><div class="v" id="movesLeft">2</div></div>
+</div>
+
+<div class="msg" id="msg">拖动旋转 · 点击选子</div>
+<div class="tip" id="tip">单指拖动旋转 · 双指缩放 · 点击落子</div>
+
+<div class="bar">
+  <button id="hintBtn">提示</button>
+  <button id="undoBtn">悔棋</button>
+  <button id="resetBtn">重来</button>
+  <button id="nextBtn">下一关 →</button>
+</div>
+
+<div id="loading"><div class="sp"></div><div class="tx">加载棋盘…</div></div>
+
+<div id="win">
+  <div class="big" id="winIcon">🏆</div>
+  <div class="t" id="winTitle">残局破解！</div>
+  <div class="s" id="winSub"></div>
+  <button id="winBtn">继续</button>
+</div>
+
+<script src="three.min.js"></script>
+<script>
+/* ══════════════ 象棋引擎（与 2D 版一致） ══════════════ */
+const RED=0, BLK=1;
+const sideOf = p => (p>='A'&&p<='Z') ? RED : BLK;
+const inPalace = (r,c,s) => (c>=3&&c<=5) && (s===RED ? (r>=7&&r<=9) : (r>=0&&r<=2));
+
+function genMoves(b, side){
+  const out=[];
+  for(let fr=0;fr<10;fr++) for(let fc=0;fc<9;fc++){
+    const p=b[fr][fc]; if(!p || sideOf(p)!==side) continue;
+    const t=p.toUpperCase();
+    const ok=(tr,tc)=> tr>=0&&tr<=9&&tc>=0&&tc<=8 && (!b[tr][tc]||sideOf(b[tr][tc])!==side);
+    if(t==='K'){
+      for(const d of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const tr=fr+d[0], tc=fc+d[1];
+        if(inPalace(tr,tc,side) && ok(tr,tc)) out.push([fr,fc,tr,tc]);
+      }
+      const ek = side===RED?'k':'K';
+      for(const d of [1,-1]){
+        let rr=fr+d;
+        while(rr>=0&&rr<=9){
+          if(b[rr][fc]){ if(b[rr][fc]===ek) out.push([fr,fc,rr,fc]); break; }
+          rr+=d;
+        }
+      }
+    } else if(t==='A'){
+      for(const d of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+        const tr=fr+d[0], tc=fc+d[1];
+        if(inPalace(tr,tc,side) && ok(tr,tc)) out.push([fr,fc,tr,tc]);
+      }
+    } else if(t==='B'){
+      for(const d of [[2,2],[2,-2],[-2,2],[-2,-2]]){
+        const tr=fr+d[0], tc=fc+d[1];
+        if(tr<0||tr>9||tc<0||tc>8) continue;
+        if(side===RED && tr<5) continue;
+        if(side===BLK && tr>4) continue;
+        if(b[fr+d[0]/2][fc+d[1]/2]) continue;
+        if(ok(tr,tc)) out.push([fr,fc,tr,tc]);
+      }
+    } else if(t==='N'){
+      for(const d of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]){
+        const tr=fr+d[0], tc=fc+d[1];
+        if(tr<0||tr>9||tc<0||tc>8) continue;
+        const br = Math.abs(d[0])===2 ? [fr+d[0]/2, fc] : [fr, fc+d[1]/2];
+        if(b[br[0]][br[1]]) continue;
+        if(ok(tr,tc)) out.push([fr,fc,tr,tc]);
+      }
+    } else if(t==='R'){
+      for(const d of [[1,0],[-1,0],[0,1],[0,-1]]){
+        let tr=fr+d[0], tc=fc+d[1];
+        while(tr>=0&&tr<=9&&tc>=0&&tc<=8){
+          if(b[tr][tc]){ if(sideOf(b[tr][tc])!==side) out.push([fr,fc,tr,tc]); break; }
+          out.push([fr,fc,tr,tc]); tr+=d[0]; tc+=d[1];
+        }
+      }
+    } else if(t==='C'){
+      for(const d of [[1,0],[-1,0],[0,1],[0,-1]]){
+        let tr=fr+d[0], tc=fc+d[1], jumped=false;
+        while(tr>=0&&tr<=9&&tc>=0&&tc<=8){
+          if(b[tr][tc]){
+            if(!jumped) jumped=true;
+            else { if(sideOf(b[tr][tc])!==side) out.push([fr,fc,tr,tc]); break; }
+          } else if(!jumped) out.push([fr,fc,tr,tc]);
+          tr+=d[0]; tc+=d[1];
+        }
+      }
+    } else if(t==='P'){
+      const fwd = side===RED?-1:1;
+      const cand=[[fr+fwd,fc]];
+      const crossed = side===RED ? fr<=4 : fr>=5;
+      if(crossed){ cand.push([fr,fc-1]); cand.push([fr,fc+1]); }
+      for(const q of cand){
+        if(q[0]<0||q[0]>9||q[1]<0||q[1]>8) continue;
+        if(ok(q[0],q[1])) out.push([fr,fc,q[0],q[1]]);
+      }
+    }
+  }
+  return out;
+}
+const cloneB = b => b.map(r=>r.slice());
+function applyM(b,m){ const n=cloneB(b); n[m[2]][m[3]]=n[m[0]][m[1]]; n[m[0]][m[1]]=null; return n; }
+function findKing(b,side){ const k=side===RED?'K':'k';
+  for(let r=0;r<10;r++) for(let c=0;c<9;c++) if(b[r][c]===k) return [r,c]; return null; }
+function inCheck(b,side){ const kp=findKing(b,side); if(!kp) return false;
+  const opp=side===RED?BLK:RED;
+  for(const m of genMoves(b,opp)) if(m[2]===kp[0]&&m[3]===kp[1]) return true; return false; }
+function legalMoves(b,side){ const out=[];
+  for(const m of genMoves(b,side)) if(!inCheck(applyM(b,m),side)) out.push(m); return out; }
+const isMate = (b,side) => inCheck(b,side) && legalMoves(b,side).length===0;
+
+function mateSearch(b,n,pv){
+  pv=pv||[]; if(n<=0) return null;
+  for(const m of legalMoves(b,RED)){
+    const nb=applyM(b,m);
+    if(!findKing(nb,BLK) || isMate(nb,BLK)) return pv.concat([m]);
+    if(n===1) continue;
+    const bl=legalMoves(nb,BLK); if(!bl.length) continue;
+    let forced=true, worst=null;
+    for(const bm of bl){
+      const nn=applyM(nb,bm);
+      if(!findKing(nn,RED)){ forced=false; break; }
+      const r=mateSearch(nn,n-1,pv.concat([m,bm]));
+      if(!r){ forced=false; break; }
+      if(!worst||r.length>worst.length) worst=r;
+    }
+    if(forced&&worst) return worst;
+  }
+  return null;
+}
+function redCanStillMate(b,n){
+  if(n<=0) return false;
+  const bl=legalMoves(b,BLK);
+  if(!bl.length) return true;
+  for(const bm of bl) if(!mateSearch(applyM(b,bm),n)) return false;
+  return true;
+}
+function bestDefense(b){
+  const bl=legalMoves(b,BLK); if(!bl.length) return null;
+  let best=bl[0], bestD=-1;
+  for(const bm of bl){
+    const nn=applyM(b,bm);
+    let d=0; for(let k=1;k<=4;k++) if(mateSearch(nn,k)){ d=k; break; }
+    if(d===0) d=9;
+    if(d>bestD){ bestD=d; best=bm; }
+  }
+  return best;
+}
+const CN=['一','二','三','四','五','六','七','八','九'];
+const PCN={K:'帅',A:'仕',B:'相',N:'马',R:'车',C:'炮',P:'兵',
+           k:'将',a:'士',b:'象',n:'马',r:'车',c:'炮',p:'卒'};
+function fileName(col,side){ return side===RED ? CN[8-col] : String(col+1); }
+function moveText(b,m){
+  const fr=m[0],fc=m[1],tr=m[2],tc=m[3];
+  const p=b[fr][fc], side=sideOf(p), name=PCN[p];
+  const same=[]; for(let r=0;r<10;r++) if(b[r][fc]===p) same.push(r);
+  let pre='';
+  if(same.length>1){
+    if(side===RED) pre = fr===Math.min(...same)?'前':(fr===Math.max(...same)?'后':'中');
+    else           pre = fr===Math.max(...same)?'前':(fr===Math.min(...same)?'后':'中');
+  }
+  if(fc===tc){
+    const fwd=(side===RED&&tr<fr)||(side===BLK&&tr>fr);
+    return pre+name+fileName(fc,side)+(fwd?'进':'退')+(side===RED?CN[Math.abs(tr-fr)-1]:String(Math.abs(tr-fr)));
+  }
+  return pre+name+fileName(fc,side)+'平'+fileName(tc,side);
+}
+
+/* ══════════════ 残局（与 2D 版同一批，已验证） ══════════════ */
+const PUZZLES = [
+{name:"单车退马",desc:"车五退一，锁死将门",limit:2,
+ board:[".........",".....kN..",".........",".........",".........",".........","....R....",".........","...K.....","........."]},
+{name:"炮退一步",desc:"退炮造杀，车平六路",limit:2,
+ board:["...a.....","...ka....",".........","..C......",".........",".........",".........",".R.......",".........","....K...."]},
+{name:"马踏斜月",desc:"马五平六，车九平四",limit:2,
+ board:[".....a...",".........",".....k...",".........","R........","....N....",".........",".........",".........","....K...."]},
+{name:"帅镇中军",desc:"帅四平五，车七平六",limit:2,
+ board:["...a.a...",".........","...k.....",".........",".........",".........",".........","..R......",".........","N....K..."]},
+{name:"车炮夹击",desc:"车一进四，炮八平六",limit:2,
+ board:["...a.....","...k.....","...a.....",".........",".C.......","........R",".........",".........","...K.....","........."]},
+{name:"马转七星",desc:"马七平五，三步入局",limit:3,
+ board:["....k....","....a....","..N......",".........","..R......",".........",".........","....K....",".........","........."]},
+{name:"炮退马进",desc:"车七平四，炮六退一",limit:3,
+ board:["...C.k...",".........",".....a...",".........",".........","..R......",".........","....K....",".........","........."]},
+{name:"马三平四",desc:"马三平四，车二进六",limit:3,
+ board:["...k..N..",".........","...a.....",".........",".........",".........",".......R.",".....K...",".........","........."]}
+];
+
+/* ══════════════ 3D 场景 ══════════════ */
+const CELL = 1.0;                     // 3D 单位格宽
+const PIECE_R = 0.43;
+const PIECE_H = 0.24;
+const BOARD_W = 8*CELL, BOARD_H = 9*CELL;
+
+let scene, camera, renderer, raycaster, boardGroup, piecesGroup;
+let pieceMeshes = [];                 // {mesh, r, c, p}
+let markerMeshes = [];
+let camSph = {theta: 0, phi: 0.52, dist: 19};   // 球坐标（phi 越小越俯视）
+let dragging = false, dragMoved = 0, lastX=0, lastY=0;
+let camMaxDist = 26;
+
+const pcX = c => (c - 4) * CELL;
+const pcZ = r => (r - 4.5) * CELL;
+
+function makeWoodTexture(){
+  const S = 1024;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = Math.round(S*BOARD_H/BOARD_W);
+  const g = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  // 木底色
+  const lg = g.createLinearGradient(0,0,W,H);
+  lg.addColorStop(0,'#e9d2ab'); lg.addColorStop(.35,'#ddc094');
+  lg.addColorStop(.7,'#d7b98c'); lg.addColorStop(1,'#c8a575');
+  g.fillStyle = lg; g.fillRect(0,0,W,H);
+  // 木纹
+  for(let i=0;i<90;i++){
+    g.globalAlpha = 0.03 + Math.random()*0.05;
+    g.strokeStyle = Math.random()>.5 ? '#5a3a1a' : '#3a2408';
+    g.lineWidth = 0.6 + Math.random()*2.4;
+    g.beginPath();
+    const y = Math.random()*H;
+    g.moveTo(0,y);
+    g.bezierCurveTo(W*.3,y+(Math.random()-.5)*22, W*.7,y+(Math.random()-.5)*22, W,y+(Math.random()-.5)*8);
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+
+  // 网格：9 竖 10 横
+  const padX = W*0.055, padY = H*0.05;
+  const gw = W - padX*2, gh = H - padY*2;
+  const cw = gw/8, chh = gh/9;
+  const X = c => padX + c*cw;
+  const Y = r => padY + r*chh;
+
+  g.strokeStyle = '#5e3f20'; g.lineCap='round';
+  g.lineWidth = Math.max(2, W*0.0035);
+  for(let r=0;r<10;r++){ g.beginPath(); g.moveTo(X(0),Y(r)); g.lineTo(X(8),Y(r)); g.stroke(); }
+  for(let c=0;c<9;c++){
+    g.beginPath();
+    if(c===0||c===8){ g.moveTo(X(c),Y(0)); g.lineTo(X(c),Y(9)); }
+    else{
+      g.moveTo(X(c),Y(0)); g.lineTo(X(c),Y(4));
+      g.moveTo(X(c),Y(5)); g.lineTo(X(c),Y(9));
+    }
+    g.stroke();
+  }
+  // 九宫斜线
+  g.lineWidth = Math.max(1.6, W*0.003);
+  g.beginPath();
+  g.moveTo(X(3),Y(0)); g.lineTo(X(5),Y(2));
+  g.moveTo(X(5),Y(0)); g.lineTo(X(3),Y(2));
+  g.moveTo(X(3),Y(7)); g.lineTo(X(5),Y(9));
+  g.moveTo(X(5),Y(7)); g.lineTo(X(3),Y(9));
+  g.stroke();
+  // 双线边框
+  g.lineWidth = Math.max(2.4, W*0.0042);
+  g.strokeRect(X(0)-9, Y(0)-9, gw+18, gh+18);
+
+  // 楚河汉界
+  g.fillStyle = 'rgba(90,60,30,.78)';
+  g.font = `600 ${Math.round(cw*0.62)}px "Songti SC","SimSun",serif`;
+  g.textAlign='center'; g.textBaseline='middle';
+  const my=(Y(4)+Y(5))/2;
+  g.fillText('楚', X(1.45), my); g.fillText('河', X(2.35), my);
+  g.fillText('汉', X(5.65), my); g.fillText('界', X(6.55), my);
+
+  // 兵/炮位的角标
+  const marks = [[3,0],[3,2],[3,4],[3,6],[3,8],[6,0],[6,2],[6,4],[6,6],[6,8],[2,1],[2,7],[7,1],[7,7]];
+  g.strokeStyle='rgba(94,63,32,.75)'; g.lineWidth = Math.max(1.4,W*0.0026);
+  const t = cw*0.14, off = cw*0.10;
+  for(const [r,c] of marks){
+    const x=X(c), y=Y(r);
+    for(const [sx,sy] of [[-1,-1],[1,-1],[-1,1],[1,1]]){
+      if((c===0&&sx<0)||(c===8&&sx>0)) continue;
+      const bx = x + sx*off, by = y + sy*off;
+      g.beginPath(); g.moveTo(bx, by + sy*t); g.lineTo(bx, by); g.lineTo(bx + sx*t, by); g.stroke();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makePieceTexture(ch, isRed){
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  const g = cv.getContext('2d');
+  // 底色
+  const rg = g.createRadialGradient(S*.38,S*.32,S*.05,S*.5,S*.5,S*.62);
+  if(isRed){ rg.addColorStop(0,'#fffaf0'); rg.addColorStop(.55,'#f3e4c9'); rg.addColorStop(1,'#dcc5a0'); }
+  else     { rg.addColorStop(0,'#fffdf8'); rg.addColorStop(.55,'#f1ebdf'); rg.addColorStop(1,'#d5cdba'); }
+  g.beginPath(); g.arc(S/2,S/2,S/2-2,0,7); g.fillStyle=rg; g.fill();
+
+  // 外圈
+  g.strokeStyle = isRed?'#b3302a':'#2a2a2a';
+  g.lineWidth = S*0.055;
+  g.beginPath(); g.arc(S/2,S/2,S/2-S*0.055,0,7); g.stroke();
+  // 内圈
+  g.strokeStyle = isRed?'rgba(179,48,42,.45)':'rgba(42,42,42,.42)';
+  g.lineWidth = S*0.022;
+  g.beginPath(); g.arc(S/2,S/2,S/2-S*0.135,0,7); g.stroke();
+  // 字
+  g.fillStyle = isRed?'#b3302a':'#1c1c1c';
+  g.font = `700 ${Math.round(S*0.46)}px "Songti SC","SimSun","STSong",serif`;
+  g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(ch, S/2, S/2 + S*0.02);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makePieceMesh(ch, isRed){
+  const grp = new THREE.Group();
+  // 柱体（木身）
+  const geo = new THREE.CylinderGeometry(PIECE_R, PIECE_R*0.97, PIECE_H, 40);
+  const sideMat = new THREE.MeshStandardMaterial({
+    color: isRed? 0xf0e0c4 : 0xece6d8, roughness:.55, metalness:.04
+  });
+  const body = new THREE.Mesh(geo, sideMat);
+  body.castShadow = true; body.receiveShadow = true;
+  grp.add(body);
+  // 顶面字（独立圆片，方向可精确控制）
+  const tex = makePieceTexture(ch, isRed);
+  const face = new THREE.Mesh(
+    new THREE.CircleGeometry(PIECE_R*0.995, 40),
+    new THREE.MeshStandardMaterial({ map: tex, roughness:.5, metalness:.03,
+                                     transparent:true })
+  );
+  face.rotation.x = -Math.PI/2;          // 平放朝上
+  face.rotation.z = 0;
+  face.position.y = PIECE_H/2 + 0.004;   // 贴在柱顶，避免 z-fighting
+  face.receiveShadow = true;
+  grp.add(face);
+  return grp;
+}
+
+function init3D(){
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x0a0603, 20, 40);
+
+  const appEl = document.getElementById('app');
+  const W = appEl.clientWidth, H = appEl.clientHeight;
+  camera = new THREE.PerspectiveCamera(42, W/H, 0.1, 200);
+
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2.5));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x0a0603);
+  document.getElementById('app').appendChild(renderer.domElement);
+
+  raycaster = new THREE.Raycaster();
+
+  // 光
+  scene.add(new THREE.AmbientLight(0xfff0d8, 0.62));
+  const key = new THREE.DirectionalLight(0xfff4e0, 1.15);
+  key.position.set(6, 14, 7);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048,2048);
+  key.shadow.camera.left=-10; key.shadow.camera.right=10;
+  key.shadow.camera.top=10; key.shadow.camera.bottom=-10;
+  key.shadow.camera.near=1; key.shadow.camera.far=40;
+  key.shadow.bias = -0.0008;
+  scene.add(key);
+
+  const fill = new THREE.DirectionalLight(0xa8c0ff, 0.28);
+  fill.position.set(-8, 6, -6);
+  scene.add(fill);
+
+  const rim = new THREE.PointLight(0xffb060, 0.5, 30);
+  rim.position.set(0, 5, -9);
+  scene.add(rim);
+
+  // 木板
+  boardGroup = new THREE.Group();
+  scene.add(boardGroup);
+
+  const tex = makeWoodTexture();
+  const planeGeo = new THREE.PlaneGeometry(BOARD_W + 0.9, BOARD_H + 0.9);
+  const plane = new THREE.Mesh(planeGeo, new THREE.MeshStandardMaterial({
+    map: tex, roughness:.72, metalness:.02
+  }));
+  plane.rotation.x = -Math.PI/2;
+  plane.receiveShadow = true;
+  boardGroup.add(plane);
+
+  // 木板厚度（侧面）
+  const t = 0.32;
+  const edgeMat = new THREE.MeshStandardMaterial({color:0x8a6034, roughness:.65});
+  const boxUnder = new THREE.Mesh(
+    new THREE.BoxGeometry(BOARD_W+0.9, t, BOARD_H+0.9), edgeMat);
+  boxUnder.position.y = -t/2 - 0.002;
+  boxUnder.receiveShadow = true; boxUnder.castShadow = true;
+  boardGroup.add(boxUnder);
+
+  // 落影平面
+  const shadowPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(60,60),
+    new THREE.ShadowMaterial({opacity:.42})
+  );
+  shadowPlane.rotation.x = -Math.PI/2;
+  shadowPlane.position.y = -t - 0.01;
+  shadowPlane.receiveShadow = true;
+  scene.add(shadowPlane);
+
+  piecesGroup = new THREE.Group();
+  scene.add(piecesGroup);
+
+  fitCamera();
+  updateCamera();
+  animate();
+  window.addEventListener('resize', onResize);
+  bindPointer();
+  document.getElementById('loading').classList.add('gone');
+}
+
+function fitCamera(){
+  const appEl = document.getElementById('app');
+  const asp = appEl.clientWidth / Math.max(1, appEl.clientHeight);
+  const FOV = 42 * Math.PI/180;
+  const vertExtent = 2*Math.tan(FOV/2);          // 每单位距离的竖向可视高度
+  const needH = 11.2;                            // 棋盘高 9 + 留白
+  const needW = 9.6;                             // 棋盘宽 8 + 留白
+  const dH = needH / vertExtent;
+  const dW = needW / (vertExtent * asp);
+  camSph.dist = Math.max(dH, dW) * 1.06;
+  camMaxDist = camSph.dist * 1.9;
+}
+
+function updateCamera(){
+  const {theta, phi, dist} = camSph;
+  camera.position.set(
+    dist*Math.sin(phi)*Math.sin(theta),
+    dist*Math.cos(phi),
+    dist*Math.sin(phi)*Math.cos(theta)
+  );
+  camera.lookAt(0, -0.3, -0.6);
+}
+
+let animQ = [];
+function animate(){
+  requestAnimationFrame(animate);
+  // 棋子移动动画
+  for(let i=animQ.length-1;i>=0;i--){
+    const a = animQ[i];
+    a.t = Math.min(1, a.t + 0.055);
+    const e = 1 - Math.pow(1-a.t, 3);
+    a.mesh.position.x = a.from.x + (a.to.x-a.from.x)*e;
+    a.mesh.position.z = a.from.z + (a.to.z-a.from.z)*e;
+    a.mesh.position.y = a.from.y + (a.to.y-a.from.y)*e + Math.sin(a.t*Math.PI)*0.32;
+    if(a.t>=1){ a.mesh.position.copy(a.to); animQ.splice(i,1); }
+  }
+  renderer.render(scene, camera);
+}
+
+function onResize(){
+  const appEl = document.getElementById('app');
+  const W=appEl.clientWidth, H=appEl.clientHeight;
+  camera.aspect = W/H; camera.updateProjectionMatrix();
+  renderer.setSize(W,H);
+  fitCamera(); updateCamera();
+}
+
+/* ══════════════ 渲染棋子 ══════════════ */
+function disposeMesh(obj){
+  obj.traverse(o=>{
+    if(o.geometry) o.geometry.dispose();
+    if(o.material){
+      const mats = Array.isArray(o.material)? o.material : [o.material];
+      for(const m of mats){ if(m.map) m.map.dispose(); m.dispose(); }
+    }
+  });
+}
+
+function clearPieces(){
+  for(const pm of pieceMeshes){ piecesGroup.remove(pm.mesh); disposeMesh(pm.mesh); }
+  pieceMeshes = [];
+  for(const m of markerMeshes){ piecesGroup.remove(m); }
+  markerMeshes = [];
+}
+
+function renderBoard(pieces){
+  clearPieces();
+  // pieces: [{r,c,p}]
+  for(const it of pieces){
+    const isRed = sideOf(it.p)===RED;
+    const mesh = makePieceMesh(PCN[it.p], isRed);
+    mesh.position.set(pcX(it.c), PIECE_H/2, pcZ(it.r));
+    piecesGroup.add(mesh);
+    pieceMeshes.push({mesh, r:it.r, c:it.c, p:it.p});
+  }
+}
+
+function rebuildFromBoard(){
+  const pieces = [];
+  for(let r=0;r<10;r++) for(let c=0;c<9;c++) if(board[r][c]) pieces.push({r,c,p:board[r][c]});
+  renderBoard(pieces);
+}
+
+function clearMarkers(){
+  for(const m of markerMeshes) piecesGroup.remove(m);
+  markerMeshes = [];
+}
+
+function addMarker(r,c,isCapture){
+  let m;
+  if(isCapture){
+    const g = new THREE.RingGeometry(CELL*0.34, CELL*0.45, 32);
+    m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+      color:0x35c060, side:THREE.DoubleSide, transparent:true, opacity:.9
+    }));
+    m.rotation.x = -Math.PI/2;
+    m.position.set(pcX(c), 0.012, pcZ(r));
+  }else{
+    const g = new THREE.CircleGeometry(CELL*0.15, 24);
+    m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+      color:0x35c060, transparent:true, opacity:.62
+    }));
+    m.rotation.x = -Math.PI/2;
+    m.position.set(pcX(c), 0.012, pcZ(r));
+  }
+  piecesGroup.add(m);
+  markerMeshes.push(m);
+}
+
+function addSelectionRing(r,c){
+  const g = new THREE.RingGeometry(CELL*0.46, CELL*0.55, 40);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    color:0x35c060, side:THREE.DoubleSide, transparent:true, opacity:.95
+  }));
+  m.rotation.x = -Math.PI/2;
+  m.position.set(pcX(c), 0.014, pcZ(r));
+  piecesGroup.add(m);
+  markerMeshes.push(m);
+}
+
+/* ══════════════ 交互 ══════════════ */
+function bindPointer(){
+  const el = renderer.domElement;
+
+  el.addEventListener('pointerdown', e=>{
+    dragging = true; dragMoved = 0;
+    lastX = e.clientX; lastY = e.clientY;
+    el.setPointerCapture(e.pointerId);
+  });
+
+  el.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    const dx = e.clientX-lastX, dy = e.clientY-lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    dragMoved += Math.abs(dx)+Math.abs(dy);
+    camSph.theta -= dx*0.007;
+    camSph.phi = Math.max(0.16, Math.min(1.30, camSph.phi - dy*0.006));
+    updateCamera();
+  });
+
+  el.addEventListener('pointerup', e=>{
+    if(dragging && dragMoved < 9){ handleClick(e.clientX, e.clientY); }
+    dragging = false;
+  });
+
+  el.addEventListener('wheel', e=>{
+    e.preventDefault();
+    camSph.dist = Math.max(7, Math.min(camMaxDist, camSph.dist + e.deltaY*0.012));
+    updateCamera();
+  }, {passive:false});
+
+  // 双指缩放
+  let pinchD = 0;
+  el.addEventListener('touchmove', e=>{
+    if(e.touches.length===2){
+      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
+                           e.touches[0].clientY-e.touches[1].clientY);
+      if(pinchD) {
+        camSph.dist = Math.max(7, Math.min(camMaxDist, camSph.dist + (pinchD-d)*0.03));
+        updateCamera();
+      }
+      pinchD = d;
+    }
+  }, {passive:true});
+  el.addEventListener('touchend', ()=>{ pinchD = 0; });
+}
+
+function handleClick(sx, sy){
+  if(solved) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((sx-rect.left)/rect.width)*2 - 1,
+    -((sy-rect.top)/rect.height)*2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+
+  // 先打棋子（Group 递归，再往上找归属）
+  const roots = pieceMeshes.map(pm=>pm.mesh);
+  const inter = raycaster.intersectObjects(roots, true);
+  if(inter.length){
+    let o = inter[0].object;
+    while(o && o.parent !== piecesGroup) o = o.parent;
+    const pm = pieceMeshes.find(x=>x.mesh===o);
+    if(pm){ onCellClick(pm.r, pm.c); return; }
+  }
+  // 再打棋盘平面
+  const planeMeshes = boardGroup.children.filter(o=>o.geometry && o.geometry.type==='PlaneGeometry');
+  const ip = raycaster.intersectObjects(planeMeshes, false);
+  if(ip.length){
+    const p = ip[0].point;
+    const c = Math.round(p.x/CELL + 4);
+    const r = Math.round(p.z/CELL + 4.5);
+    if(r>=0&&r<=9&&c>=0&&c<=8) onCellClick(r,c);
+  }
+}
+
+/* ══════════════ 游戏状态 ══════════════ */
+let board, lv=0, sel=null, legal=[], redMoves=0, solved=false;
+let snapshots = [];
+
+function loadLevel(i){
+  lv = Math.max(0, Math.min(PUZZLES.length-1, i));
+  const P = PUZZLES[lv];
+  board = P.board.map(row=>row.split('').map(ch=>ch==='.'?null:ch));
+  sel=null; legal=[]; redMoves=0; solved=false; snapshots=[];
+  document.getElementById('lvNum').textContent = lv+1;
+  document.getElementById('lvAll').textContent = PUZZLES.length;
+  document.getElementById('moveLimit').textContent = P.limit;
+  document.getElementById('nextBtn').classList.remove('show');
+  document.getElementById('win').classList.remove('show');
+  clearMarkers();
+  rebuildFromBoard();
+  updateHUD();
+  setMsg(P.desc,'');
+  localStorage.setItem('xq3d_lv', String(lv));
+}
+
+function updateHUD(){
+  const P = PUZZLES[lv];
+  const left = P.limit - redMoves;
+  document.getElementById('moveCnt').textContent = redMoves;
+  document.getElementById('movesLeft').textContent = Math.max(0,left);
+  document.getElementById('c1').classList.toggle('warn', left<=0 && !solved);
+  document.getElementById('c3').classList.toggle('warn', left<=0 && !solved);
+}
+function setMsg(t,cls){
+  const el=document.getElementById('msg');
+  el.textContent=t; el.className='msg'+(cls?' '+cls:'');
+}
+
+function onCellClick(r,c){
+  const P = PUZZLES[lv];
+  if(redMoves >= P.limit && !solved) return;
+  const p = board[r][c];
+
+  if(p && sideOf(p)===RED){
+    sel=[r,c];
+    legal = legalMoves(board,RED).filter(m=>m[0]===r&&m[1]===c);
+    clearMarkers();
+    addSelectionRing(r,c);
+    for(const m of legal) addMarker(m[2], m[3], !!board[m[2]][m[3]]);
+    return;
+  }
+  if(sel){
+    const mv = legal.find(m=>m[2]===r&&m[3]===c);
+    if(mv){ doRedMove(mv); return; }
+    sel=null; legal=[]; clearMarkers();
+  }
+}
+
+function doRedMove(mv){
+  snapshots.push({b:cloneB(board), rm:redMoves});
+  const txt = moveText(board, mv);
+
+  // 动画：移动对应 mesh
+  const pm = pieceMeshes.find(x=>x.r===mv[0] && x.c===mv[1]);
+  const cap = pieceMeshes.find(x=>x.r===mv[2] && x.c===mv[3]);
+  if(cap){ // 被吃的棋子淡出
+    piecesGroup.remove(cap.mesh);
+    pieceMeshes = pieceMeshes.filter(x=>x!==cap);
+  }
+  if(pm){
+    pm.r = mv[2]; pm.c = mv[3];
+    pm.mesh.userData.gone = true;
+    animQ.push({
+      mesh: pm.mesh, t: 0,
+      from: pm.mesh.position.clone(),
+      to: new THREE.Vector3(pcX(mv[3]), PIECE_H/2, pcZ(mv[2]))
+    });
+  }
+
+  board = applyM(board, mv);
+  redMoves++;
+  sel=null; legal=[]; clearMarkers();
+  updateHUD();
+  setMsg(txt,'');
+
+  if(!findKing(board,BLK) || isMate(board,BLK)){ win(); return; }
+
+  const leftNow = PUZZLES[lv].limit - redMoves;
+  const stillOk = redCanStillMate(board, leftNow);
+
+  setTimeout(()=>{
+    const bm = bestDefense(board);
+    if(!bm){ win(); return; }
+    // 黑方动画
+    const bpm = pieceMeshes.find(x=>x.r===bm[0] && x.c===bm[1]);
+    const bcap = pieceMeshes.find(x=>x.r===bm[2] && x.c===bm[3]);
+    if(bcap){
+      piecesGroup.remove(bcap.mesh);
+      pieceMeshes = pieceMeshes.filter(x=>x!==bcap);
+    }
+    if(bpm){
+      bpm.r = bm[2]; bpm.c = bm[3];
+      animQ.push({
+        mesh: bpm.mesh, t: 0,
+        from: bpm.mesh.position.clone(),
+        to: new THREE.Vector3(pcX(bm[3]), PIECE_H/2, pcZ(bm[2]))
+      });
+    }
+    board = applyM(board, bm);
+    updateHUD();
+
+    if(!findKing(board,RED) || isMate(board,RED)){ lose('被反杀了'); return; }
+    if(!stillOk){ setMsg('这步走错了，已经杀不到了 —— 建议悔棋','bad'); return; }
+    const left = PUZZLES[lv].limit - redMoves;
+    if(left<=0){ lose('步数用完了'); return; }
+    setMsg(`还剩 ${left} 步`,'');
+  }, 320);
+}
+
+function win(){
+  solved = true;
+  document.getElementById('nextBtn').classList.add('show');
+  document.getElementById('winIcon').textContent='🏆';
+  document.getElementById('winTitle').textContent='残局破解！';
+  document.getElementById('winSub').textContent = `${PUZZLES[lv].name} · 用了 ${redMoves} 步`;
+  document.getElementById('win').classList.add('show');
+  setMsg('漂亮！','ok');
+  const best = Number(localStorage.getItem('xq3d_best')||'0');
+  if(lv+1>best) localStorage.setItem('xq3d_best', String(lv+1));
+}
+function lose(reason){
+  document.getElementById('winIcon').textContent='💀';
+  document.getElementById('winTitle').textContent='再想想';
+  document.getElementById('winSub').textContent = reason;
+  document.getElementById('win').classList.add('show');
+  setMsg(reason,'bad');
+}
+
+function hint(){
+  if(solved) return;
+  const pv = mateSearch(board, PUZZLES[lv].limit - redMoves);
+  if(!pv || !pv.length){ setMsg('这局已经杀不到了，建议悔棋','bad'); return; }
+  const m = pv[0];
+  setMsg(`提示：走 ${moveText(board,m)}`,'hint');
+  sel=[m[0],m[1]];
+  legal=[m];
+  clearMarkers();
+  addSelectionRing(m[0],m[1]);
+  addMarker(m[2],m[3], !!board[m[2]][m[3]]);
+}
+
+function undo(){
+  if(!snapshots.length) return;
+  const s = snapshots.pop();
+  board = cloneB(s.b); redMoves = s.rm; solved=false;
+  sel=null; legal=[];
+  document.getElementById('nextBtn').classList.remove('show');
+  document.getElementById('win').classList.remove('show');
+  clearMarkers(); rebuildFromBoard();
+  updateHUD(); setMsg('已悔棋','');
+}
+
+/* ══════════════ 启动 ══════════════ */
+document.getElementById('hintBtn').onclick = hint;
+document.getElementById('undoBtn').onclick = undo;
+document.getElementById('resetBtn').onclick = ()=>loadLevel(lv);
+document.getElementById('nextBtn').onclick = ()=>{
+  if(lv < PUZZLES.length-1) loadLevel(lv+1);
+  else { document.getElementById('win').classList.remove('show'); setMsg('全部通关！','ok'); }
+};
+document.getElementById('winBtn').onclick = ()=>{
+  document.getElementById('win').classList.remove('show');
+  if(solved && lv<PUZZLES.length-1) loadLevel(lv+1);
+  else if(solved) setMsg('全部通关！','ok');
+  else loadLevel(lv);
+};
+
+init3D();
+const saved = Number(localStorage.getItem('xq3d_lv')||'0');
+loadLevel(isNaN(saved)?0:saved);
+console.log('3D 残局已就绪 · three r'+THREE.REVISION);
+</script>
+</body>
+</html>
